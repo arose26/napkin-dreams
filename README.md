@@ -6,7 +6,8 @@ Repo 4 of the **[napkin-gamemaster series](https://github.com/arose26/napkin-gam
 
 ![dream](assets/dream.gif)
 
-*Left: reality. Right: the model's dream, given the same start and the same 45 actions.*
+*Left: reality. Right: the model's dream, given the same start and the same 45 actions. The
+visible degradation is not gif-compression — it IS the result (see the trust probe below).*
 
 ## The experiment
 
@@ -62,8 +63,29 @@ That detachment buys the repo's signature `selfcheck`: the imagination loop is a
    4 of 5 seeds — and may flatter h15 there, since the excluded seed is its worst. Two `h45`
    seeds had only 8–16 valid windows; their probes use exact enumeration of those windows.
 
-The series-level verdict this repo exists to produce: **model-based buys nothing at this scale —
-napkin-gamemaster goes model-free**, citing these numbers.
+### Where the failure actually lives: the trust probe
+
+A skeptical eye on the gif (credit: a reviewer's five-second look) forced the question the
+aggregate numbers dodge: is the *idea* of dreaming losing here, or is the dream itself too broken
+to learn from? `probe` retrains the reference h15 run and scores the model **open-loop against
+do-nothing baselines on the same held-out windows** (`assets/trust_probe.json`):
+
+| what the dream predicts | beats its no-skill baseline until step |
+|---|---|
+| pixels (vs frozen first frame — "nothing ever moves") | **13** |
+| reward (vs constant base rate) | 19 (first transient loss at 10) |
+| episode end (vs constant base rate) | **5** — then confidently wrong (BCE ~7 vs 0.12 by step 20) |
+
+The actor never sees pixels; it trains on latents through the reward and done heads. Done
+predictions worse than a constant **by dream step 5** poison the λ-returns (soft continues) of
+even the shortest useful dreams. That is the bottleneck, measured at the exact interface the
+dream gradient consumes.
+
+**The verdict, scoped to what was measured:** at napkin scale, *this* model class — deterministic
+128-d latent, GRU dynamics, trained on 5-step windows — cannot dream well enough to train on, so
+**napkin-gamemaster goes model-free**, citing these numbers. Nothing here indicts model-based RL
+with a model good enough to dream past its horizon; Dreamer-scale machinery is exactly what this
+repo deliberately excluded.
 
 ## Run it
 

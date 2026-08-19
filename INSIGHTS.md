@@ -55,3 +55,23 @@ measurement says more: h45's open-loop BCE rises ~2× faster than h3/h15's (knee
 what differs is the data, because each arm's own policy collects it. So the arm knob reached the
 model through the buffer: "dream longer" degraded the dream itself via the experience it
 gathered, not just the policy's use of it. Registered as a surprise, not an explanation.
+
+## 5. The gif caught what the aggregates normalized away
+
+The sweep numbers were consistent with two very different stories: "dream training doesn't pay at
+this scale" and "this particular world model is too broken to dream with". The published verdict
+initially leaned on the first. A reviewer looked at the hero gif for five seconds and called it:
+the dream visibly falls apart mid-rollout, so blame the model, not the idea.
+
+The follow-up probe made it quantitative, and at the right interface: the actor never sees
+pixels — it trains on latents through the reward and done heads. Measured open-loop against
+do-nothing baselines: pixels beat a frozen frame only to step 13, and done predictions are worse
+than a constant base rate from step 5, then confidently wrong (BCE ~7 vs 0.12). With soft
+continues feeding λ-returns, every dream longer than a few steps was training the policy on a
+corrupted notion of when episodes end.
+
+**Takeaway (two-part):** look at the artifact before you believe the aggregate — renderable
+outputs disambiguate causal stories in seconds. And when a conclusion is negative, measure the
+failing component against a no-skill baseline at the interface downstream code actually consumes,
+then scope the claim to that component. "X fails" and "my 5MB instance of X's key module fails"
+are different findings; only the second was earned here.

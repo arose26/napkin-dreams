@@ -326,6 +326,61 @@ def divergence(wm, buf, horizon=45, k=256):
     return per_step
 
 
+def probe(horizon=45, k=256):
+    """How long is the dream better than not dreaming? Retrains the h15
+    reference run, then scores the model open-loop on the same held-out
+    windows along two tracks. Pixels (the visualizable proxy): dream
+    reconstruction BCE vs a frozen first frame and vs the buffer's marginal
+    pixel rate. Reward/done (what the dream gradient actually consumes):
+    per-step reward MAE and done BCE vs constant base-rate predictors.
+    The crossover steps are the model's real trust horizon."""
+    print("training h15 seed 0 for the probe (full run)...", flush=True)
+    _, wm, _, buf = train("h15", seed=0, quiet=True)
+    o, a, r, d = buf.sample_windows(k, horizon)
+    o_t = torch.as_tensor(o, device=DEV)
+    a_t = torch.as_tensor(a, device=DEV)
+    r_t = torch.as_tensor(r, device=DEV).float()
+    d_t = torch.as_tensor(d, device=DEV).float()
+    eps = 1e-3
+    marg = np.clip(buf.o[:buf.n].astype(np.float32).mean(0), eps, 1 - eps)
+    r_base = float(buf.r[:buf.n].mean())
+    d_base = float(np.clip(buf.d[:buf.n].mean(), eps, 1 - eps))
+    dream, frozen, marginal = [], [], []
+    rew_mae, rew_base_mae, done_bce, done_base_bce = [], [], [], []
+    with torch.no_grad():
+        h = wm.enc(o_t[:, 0])
+        p0 = torch.clamp(o_t[:, 0], eps, 1 - eps)
+        pm = torch.as_tensor(marg, device=DEV).expand_as(o_t[:, 0])
+        for t in range(horizon):
+            h, r_hat, d_prob = wm.step(h, a_t[:, t])
+            tgt = o_t[:, t + 1]
+            dream.append(float(F.binary_cross_entropy_with_logits(
+                wm.dec(h), tgt, reduction="mean")))
+            frozen.append(float(F.binary_cross_entropy(p0, tgt, reduction="mean")))
+            marginal.append(float(F.binary_cross_entropy(pm, tgt, reduction="mean")))
+            rew_mae.append(float((r_hat - r_t[:, t]).abs().mean()))
+            rew_base_mae.append(float((r_base - r_t[:, t]).abs().mean()))
+            done_bce.append(float(F.binary_cross_entropy(
+                torch.clamp(d_prob, eps, 1 - eps), d_t[:, t], reduction="mean")))
+            done_base_bce.append(float(F.binary_cross_entropy(
+                torch.full_like(d_prob, d_base), d_t[:, t], reduction="mean")))
+    def crossover(model, base):
+        return next((t + 1 for t in range(horizon) if model[t] > base[t]), None)
+    out = dict(dream=dream, frozen_frame=frozen, marginal=marginal,
+               reward_mae=rew_mae, reward_base_mae=rew_base_mae,
+               done_bce=done_bce, done_base_bce=done_base_bce,
+               pixels_lose_to_frozen_at_step=crossover(dream, frozen),
+               reward_loses_to_base_rate_at_step=crossover(rew_mae, rew_base_mae),
+               done_loses_to_base_rate_at_step=crossover(done_bce, done_base_bce))
+    path = Path(__file__).parent / "assets" / "trust_probe.json"
+    path.write_text(json.dumps(out))
+    for key in ("pixels_lose_to_frozen_at_step", "reward_loses_to_base_rate_at_step",
+                "done_loses_to_base_rate_at_step"):
+        print(f"{key}: {out[key]}")
+    print(f"wrote {path}")
+    return out
+
+
 # ---------------------------------------------------------------------- sweep
 
 def run_sweep(total_real, seeds, shard=0, nshards=1):
@@ -617,6 +672,7 @@ if __name__ == "__main__":
     s.add_argument("--nshards", type=int, default=1)
     sub.add_parser("plot")
     sub.add_parser("gif")
+    sub.add_parser("probe")
     args = ap.parse_args()
 
     OUT.mkdir(exist_ok=True)
@@ -633,3 +689,5 @@ if __name__ == "__main__":
         make_plots()
     elif args.cmd == "gif":
         make_gif()
+    elif args.cmd == "probe":
+        probe()
