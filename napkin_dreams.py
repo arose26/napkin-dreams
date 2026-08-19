@@ -140,12 +140,22 @@ class SeqReplay:
         self.r[self.n], self.d[self.n] = r, d
         self.n += 1
 
-    def sample_windows(self, k, L):
+    def sample_windows(self, k, L, max_tries=200):
         """Windows [k, L+1] of obs and [k, L] of a/r/d. Rejection-samples
-        starts whose first L-1 steps contain a done (crossing a reset)."""
+        starts whose first L-1 steps contain a done (crossing a reset).
+        Fails loudly if the buffer has (almost) no done-free windows of
+        length L -- an unbounded loop here livelocks on collapsed-policy
+        seeds whose episodes are all shorter than L."""
         idx = np.zeros(k, np.int64)
         got = 0
+        tries = 0
         while got < k:
+            tries += 1
+            if tries > max_tries:
+                raise RuntimeError(
+                    f"sample_windows: found {got}/{k} done-free windows of "
+                    f"length {L} after {max_tries} tries; episodes in the "
+                    f"buffer are too short for this window length")
             cand = self.rng.integers(0, self.n - L, size=k)
             ok = np.array([not self.d[c:c + L - 1].any() for c in cand])
             take = cand[ok][:k - got]
@@ -321,7 +331,11 @@ def run_sweep(total_real, seeds, shard=0, nshards=1):
         if f.exists():
             continue
         curve, wm, ac, buf = train(arm, seed, total_real, quiet=True)
-        div = divergence(wm, buf)
+        try:
+            div = divergence(wm, buf)
+        except RuntimeError as e:
+            print(f"  {arm} seed {seed}: divergence skipped ({e})", flush=True)
+            div = None
         f.write_text(json.dumps(dict(curve=curve, divergence=div)))
         print(f"[{k + 1:2}/{len(todo)}] {arm:4} seed {seed}  "
               f"final {curve[-1][1]:6.2f}  elapsed {(time.time() - t0) / 60:5.1f} min",
@@ -369,9 +383,11 @@ def make_plots():
             axes[0].plot(c[:, 0], c[:, 1], color=colors[arm], alpha=0.15, lw=0.6)
         axes[0].plot(x, iqm(curves[:, :, 1], axis=0), color=colors[arm],
                      lw=2.0, label=f"{arm} (dream horizon {ARMS[arm]})")
-        divs = np.array([seeds[s]["divergence"] for s in sorted(seeds)])
-        axes[1].plot(range(1, divs.shape[1] + 1), divs.mean(0),
-                     color=colors[arm], lw=2.0, label=arm)
+        divs = np.array([seeds[s]["divergence"] for s in sorted(seeds)
+                         if seeds[s]["divergence"] is not None])
+        if divs.size:
+            axes[1].plot(range(1, divs.shape[1] + 1), divs.mean(0),
+                         color=colors[arm], lw=2.0, label=arm)
         tail = curves[:, x >= 0.9 * x[-1], 1].mean(1)
         results[arm] = dict(iqm=float(iqm(tail)),
                             ci=[float(v) for v in bootstrap_ci(tail)],
@@ -515,6 +531,18 @@ def selfcheck():
     _, _, _, dw = buf.sample_windows(200, SEQ)
     assert not dw[:, :-1].any(), "window crosses an episode boundary"
     print("replay windows never straddle a reset (200 sampled)")
+
+    # 4b. sampling fails loudly (no livelock) when every episode is shorter
+    # than the requested window.
+    short = SeqReplay(200, (ch, 10, 10), seed=1)
+    for i in range(100):
+        short.add(np.zeros((ch, 10, 10), np.uint8), 0, 0.0, 1.0)  # done every step
+    try:
+        short.sample_windows(4, 5, max_tries=20)
+        raise AssertionError("sample_windows should have raised on all-done buffer")
+    except RuntimeError:
+        pass
+    print("sample_windows raises (not livelocks) when windows are infeasible")
 
     # 5. world model overfits one batch (all four heads wired right).
     torch.manual_seed(1)
