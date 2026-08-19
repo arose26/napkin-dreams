@@ -143,19 +143,25 @@ class SeqReplay:
     def sample_windows(self, k, L, max_tries=200):
         """Windows [k, L+1] of obs and [k, L] of a/r/d. Rejection-samples
         starts whose first L-1 steps contain a done (crossing a reset).
-        Fails loudly if the buffer has (almost) no done-free windows of
-        length L -- an unbounded loop here livelocks on collapsed-policy
-        seeds whose episodes are all shorter than L."""
+        Rejection is only the fast path: if the buffer is so episodic that
+        it stalls (an unbounded loop here livelocks on collapsed-policy
+        seeds), fall back to exact enumeration of valid starts and sample
+        those with replacement; fail loudly only if none exist at all."""
         idx = np.zeros(k, np.int64)
         got = 0
         tries = 0
         while got < k:
             tries += 1
             if tries > max_tries:
-                raise RuntimeError(
-                    f"sample_windows: found {got}/{k} done-free windows of "
-                    f"length {L} after {max_tries} tries; episodes in the "
-                    f"buffer are too short for this window length")
+                dones = np.convolve(self.d[:self.n].astype(np.float64),
+                                    np.ones(L - 1), "valid")[: self.n - L]
+                valid = np.flatnonzero(dones == 0)
+                if len(valid) == 0:
+                    raise RuntimeError(
+                        f"sample_windows: no done-free window of length {L} "
+                        f"exists in the buffer; episodes are too short")
+                idx[got:] = self.rng.choice(valid, size=k - got, replace=True)
+                break
             cand = self.rng.integers(0, self.n - L, size=k)
             ok = np.array([not self.d[c:c + L - 1].any() for c in cand])
             take = cand[ok][:k - got]
@@ -543,6 +549,16 @@ def selfcheck():
     except RuntimeError:
         pass
     print("sample_windows raises (not livelocks) when windows are infeasible")
+
+    # 4c. when valid windows are merely rare, the exact-enumeration fallback
+    # finds them: one 12-step clean stretch hidden among constant resets.
+    sparse = SeqReplay(200, (ch, 10, 10), seed=1)
+    for i in range(100):
+        clean = 40 <= i < 52
+        sparse.add(np.zeros((ch, 10, 10), np.uint8), 0, 0.0, 0.0 if clean else 1.0)
+    _, _, _, dws = sparse.sample_windows(8, 5, max_tries=1)
+    assert not dws[:, :-1].any(), "fallback returned a window crossing a reset"
+    print("sample_windows exact fallback finds rare valid windows")
 
     # 5. world model overfits one batch (all four heads wired right).
     torch.manual_seed(1)
