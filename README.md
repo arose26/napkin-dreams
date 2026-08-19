@@ -33,7 +33,37 @@ That detachment buys the repo's signature `selfcheck`: the imagination loop is a
 
 ## Results
 
-*(sweep running — filled in whichever way it lands)*
+![results](assets/results.png)
+
+| arm | final IQM real return (95% CI) |
+|---|---|
+| `h3` | **0.56** (0.47 – 1.19) |
+| `h15` | **0.50** (0.32 – 0.88) |
+| `h45` | **0.49** (0.34 – 0.65) |
+| model-free DQN, same env, same 150k real steps | **6.67** |
+
+**The registered hypotheses were mostly wrong, and the plot says so.**
+
+1. **Dreams were not more frame-efficient — not early, not ever.** The model-free DQN curve
+   crosses the dream arms within the first ~20k real steps and ends **13× higher** at the same
+   real-frame budget. At napkin scale (deterministic 128-d world model, REINFORCE-only actor),
+   dreaming does not buy sample efficiency on MinAtar Breakout; it costs an order of magnitude.
+2. **No inverted U detected.** h3 ≈ h15 ≈ h45: every CI overlaps every other at n=5. That is a
+   failure to detect an ordering, not proof of equivalence — either way, no winner is claimed
+   and the registered U did not show up.
+3. **Divergence grows in dream depth as predicted** — but with a twist we didn't register:
+   `h45`'s world model diverges *fastest* (BCE knee near step 10, ~2× the other arms by step 20),
+   not just its policy. The model recipe (architecture, schedule, hyperparameters) is identical
+   across arms; what differs is the data each arm's own policy collects. So "dream longer"
+   degraded the dream itself through the data it gathered, not through the training recipe.
+4. One `h15` seed collapsed outright (final return 0.25 — **included** in the return IQM above;
+   episodes all shorter than 45 steps). Its divergence probe has no valid 45-step window and is
+   reported as **null**, not fabricated (see INSIGHTS #3), so the h15 divergence curve averages
+   4 of 5 seeds — and may flatter h15 there, since the excluded seed is its worst. Two `h45`
+   seeds had only 8–16 valid windows; their probes use exact enumeration of those windows.
+
+The series-level verdict this repo exists to produce: **model-based buys nothing at this scale —
+napkin-gamemaster goes model-free**, citing these numbers.
 
 ## Run it
 

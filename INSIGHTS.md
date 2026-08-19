@@ -26,3 +26,32 @@ real env has no gradients), and its bookkeeping would be untestable by substitut
 
 **Takeaway:** when choosing between two designs, "which one can be tested by swapping in the
 ground truth" is a real design criterion, not an afterthought.
+
+## 3. An unbounded rejection sampler is a livelock wearing a correctness proof
+
+The divergence probe rejection-samples 45-step windows that don't cross an episode reset. The
+loop was "obviously correct": keep drawing until you have 256 clean windows. Then one h15 seed
+collapsed — final return 0.25, every episode shorter than 45 steps — and the probe didn't fail,
+didn't error, didn't time out. It spun at 100% CPU forever, in numpy, invisible to any check
+that only asks "is the process alive and busy?". It cost hours to notice precisely because the
+failure mode looks identical to healthy training from the outside.
+
+Two fixes, both now selfchecked. First: bound the loop and **fail loudly** — a raised error
+naming found/needed counts turns an invisible hang into a one-line diagnosis. Second, and only
+after the loud version revealed the true shape of the problem: two other seeds had *rare but
+real* clean windows (8 and 16 of the needed 256) that bounded rejection would wrongly abandon,
+so exhaustion now falls back to exact enumeration of valid starts — terminating, and null only
+when null is true (that collapsed seed's divergence is reported as null, not fabricated).
+
+**Takeaway:** any `while` loop whose exit depends on properties of the data, not of the code,
+needs a bound and a loud exit. And the first loud failure is diagnostic gold: it told us the
+difference between "no valid windows" and "rare valid windows", which the hang never could.
+
+## 4. The long-horizon arm didn't just trust its model further — it had a worse model
+
+The registered hypothesis blamed long dreams for *exploiting* a fixed-quality model. The
+measurement says more: h45's open-loop BCE rises ~2× faster than h3/h15's (knee near dream step
+10). The model's recipe — architecture, schedule, hyperparameters — is identical across arms;
+what differs is the data, because each arm's own policy collects it. So the arm knob reached the
+model through the buffer: "dream longer" degraded the dream itself via the experience it
+gathered, not just the policy's use of it. Registered as a surprise, not an explanation.
