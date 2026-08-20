@@ -86,13 +86,28 @@ do-nothing baselines on the same held-out windows** (`assets/trust_probe.json`):
 The done row needs its direction stated, because the obvious reading is the wrong one. These
 windows contain **no reset** except possibly at their final step, so the truth is "the episode
 does not end here" at every step scored — the constant base rate gets BCE 0.124 by simply saying
-so. A BCE near 7 means the model asserted the opposite with ~99.9% confidence: **it invents
-episode ends that never happen**, rather than missing real ones.
+so. A BCE near 7 therefore means the model asserted the opposite at ~99.9% confidence: **it
+invents episode ends that never happen**, rather than missing real ones.
+
+Since the targets are all zero, the committed BCEs convert straight back to the model's predicted
+done probability (d̂ = 1 − e^−BCE), and *that* is where the damage is legible — soft continues
+multiply the dream's remaining credit by (1 − d̂) every step:
+
+| dream step | 3 | 5 | 7 | 10 | 12 | 15 |
+|---|---|---|---|---|---|---|
+| d̂ (model's claimed chance the episode ends here) | 0.001 | 0.14 | **0.53** | 0.77 | 0.98 | 1.00 |
+| surviving credit, ∏(1 − d̂) | 1.00 | 0.86 | **0.20** | 0.013 | ~0 | ~0 |
+
+So step 5 is only where the model becomes *worse* than a constant; the destruction starts around
+**step 7**, and by step 10 roughly 99% of the dream's return has been multiplied away on windows
+that demonstrably never end. A 3-step dream sits entirely inside the trustworthy region — which
+is consistent with `h3` being no worse than the longer arms, though it does not explain why
+dreaming lost to model-free DQN in the first place.
 
 The actor never sees pixels; it trains on latents through the reward and done heads. Hallucinated
-episode ends **by dream step 5** poison the λ-returns of even the shortest useful dreams, and they
-poison them in a specific way: soft continues multiply future credit by (1 − d̂), so a phantom
-done at step 5 silently deletes the rest of the dream's return. That is the bottleneck, measured
+episode ends are what poison the λ-returns: the model's claimed end-probability passes 0.5 by
+dream **step 7** and 0.98 by step 12, so soft continues have deleted ~99% of a 15-step dream's
+remaining credit by step 10. That is the bottleneck, measured
 at the exact interface the dream gradient consumes.
 
 One boundary in the divergence plot, for the same reason: a window is allowed to end on a reset —

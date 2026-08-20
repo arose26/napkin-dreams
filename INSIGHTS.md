@@ -95,6 +95,14 @@ at ~99.9% confidence (BCE ≈ 7). That distinction changes the mechanism from "t
 terminations" to "soft continues multiply the rest of the dream's return by ~zero", which is a
 sharper and more damning story — and it was sitting in the committed JSON the whole time.
 
+Converting the BCEs back to probabilities also corrected my own first draft of this entry, which
+put the phantom done at step 5 because that is where the crossover is. At step 5 the model claims
+d̂ = 0.14, barely above the 0.12 base rate — not a hallucination, just a slightly worse guess. The
+claim only becomes confident at **step 7** (d̂ = 0.53) and total by step 12 (0.98). What makes step
+5 matter is *compounding*, not that step's own error: ∏(1 − d̂) is 0.86 at step 5, 0.20 at step 7,
+0.013 at step 10. "Where does it cross the baseline" and "where does it start doing damage" are
+different steps, and only the second one is the mechanism.
+
 **Takeaway:** before publishing "the model is worse than a trivial baseline", look at what the
 baseline is being right about. A flat baseline curve usually means the labels are constant, and a
 constant-label regime tells you which of two opposite failures you are looking at.
