@@ -53,19 +53,22 @@ That detachment buys the repo's signature `selfcheck`: the imagination loop is a
    failure to detect an ordering, not proof of equivalence — either way, no winner is claimed
    and the registered U did not show up.
 3. **Divergence grows in dream depth as predicted** — but with a twist we didn't register:
-   `h45`'s world model diverges *fastest* (BCE knee near step 10, ~2× the other arms by step 20),
+   `h45`'s world model diverges *fastest* (BCE knee near step 10; 0.346 at step 20 against
+   `h3`'s 0.161 and `h15`'s 0.186, all 5 seeds),
    not just its policy. The model recipe (architecture, schedule, hyperparameters) is identical
    across arms; what differs is the data each arm's own policy collects. So "dream longer"
    degraded the dream itself through the data it gathered, not through the training recipe.
 4. One `h15` seed collapsed (seed 4: tail-mean return 0.25, the statistic the table uses; its
-   last curve point is 0.35) — **included** in the return IQM above. Its divergence probe found
-   **no usable 45-step window**: bounded rejection sampling drew ~51k candidate starts and
-   accepted 0 of the 256 needed, so the probe is reported as **null** rather than fabricated
-   (see INSIGHTS #3). Caveat stated because it matters: that null was produced *before* the
-   exact-enumeration fallback landed, and rejection can miss windows that are merely rare, so
-   "none exist" is not established — only "none found". The h15 divergence curve averages
-   4 of 5 seeds — and may flatter h15 there, since the excluded seed is its worst. Two `h45`
-   seeds had only 8–16 valid windows; their probes use exact enumeration of those windows.
+   last curve point is 0.35) — **included** in the return IQM above. Its divergence probe first
+   came back **null**: bounded rejection sampling drew ~51k candidate starts and accepted 0 of
+   the 256 windows needed. That null was a **false negative**, and this repo says so because it
+   went back and checked. Rerunning the seed with the exact-enumeration fallback reproduced the
+   training curve bit for bit (same 0.35 final) and *did* find usable windows — they were rare
+   enough for 51k random draws to miss, not absent (see INSIGHTS #3). Every divergence curve
+   below therefore averages **5 of 5 seeds**. The recovered seed is indeed h15's worst
+   (BCE 0.339 at dream step 20 against the arm's 0.186 mean), which is exactly why leaving it
+   out would have flattered h15. Two `h45` seeds had only 8–16 valid windows; their probes use
+   exact enumeration of those.
 
 ### Where the failure actually lives: the trust probe
 
@@ -80,10 +83,22 @@ do-nothing baselines on the same held-out windows** (`assets/trust_probe.json`):
 | reward (vs constant base rate) | 19 (first transient loss at 10) |
 | episode end (vs constant base rate) | **5** — then confidently wrong (BCE ~7 vs 0.12 by step 20) |
 
-The actor never sees pixels; it trains on latents through the reward and done heads. Done
-predictions worse than a constant **by dream step 5** poison the λ-returns (soft continues) of
-even the shortest useful dreams. That is the bottleneck, measured at the exact interface the
-dream gradient consumes.
+The done row needs its direction stated, because the obvious reading is the wrong one. These
+windows contain **no reset** except possibly at their final step, so the truth is "the episode
+does not end here" at every step scored — the constant base rate gets BCE 0.124 by simply saying
+so. A BCE near 7 means the model asserted the opposite with ~99.9% confidence: **it invents
+episode ends that never happen**, rather than missing real ones.
+
+The actor never sees pixels; it trains on latents through the reward and done heads. Hallucinated
+episode ends **by dream step 5** poison the λ-returns of even the shortest useful dreams, and they
+poison them in a specific way: soft continues multiply future credit by (1 − d̂), so a phantom
+done at step 5 silently deletes the rest of the dream's return. That is the bottleneck, measured
+at the exact interface the dream gradient consumes.
+
+One boundary in the divergence plot, for the same reason: a window is allowed to end on a reset —
+otherwise the done head would never see a positive example at all — so only a curve's final point
+can be scored against a post-reset frame. `plot` draws the reset-free prefix; `assets/results.json`
+keeps all 45 steps.
 
 **The verdict, scoped to what was measured:** at napkin scale, *this* model class — deterministic
 128-d latent, GRU dynamics, trained on 5-step windows — cannot dream well enough to train on, so

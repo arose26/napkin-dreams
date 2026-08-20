@@ -41,11 +41,21 @@ naming found/needed counts turns an invisible hang into a one-line diagnosis. Se
 after the loud version revealed the true shape of the problem: two other seeds had *rare but
 real* clean windows (8 and 16 of the needed 256) that bounded rejection would wrongly abandon,
 so exhaustion now falls back to exact enumeration of valid starts — terminating, and null only
-when null is true (that collapsed seed's divergence is reported as null, not fabricated).
+when null is true.
+
+**The bound then produced a false negative of its own, and it took a rerun to catch.** The
+collapsed seed was published with a null divergence and an explicit caveat that "none found" is
+not "none exist". Rerunning it with the fallback in place settled which one it was: the training
+reproduced bit for bit (identical curve), and the probe returned a full 45-step divergence curve.
+The windows had been there all along, rare enough that ~51k random draws missed all of them. So
+the honest ledger is that a *loud* failure is still a failure mode: it converted a hang into a
+wrong-but-legible answer, and only re-running the measurement with the better estimator turned it
+into a right one.
 
 **Takeaway:** any `while` loop whose exit depends on properties of the data, not of the code,
-needs a bound and a loud exit. And the first loud failure is diagnostic gold: it told us the
-difference between "no valid windows" and "rare valid windows", which the hang never could.
+needs a bound and a loud exit — and a bound is an estimator, so its null results need the same
+suspicion as any other measurement. When you publish a null that a caveat has to defend, that
+caveat is a to-do item, not an absolution: go back and measure it properly.
 
 ## 4. The long-horizon arm didn't just trust its model further — it had a worse model
 
@@ -75,3 +85,16 @@ outputs disambiguate causal stories in seconds. And when a conclusion is negativ
 failing component against a no-skill baseline at the interface downstream code actually consumes,
 then scope the claim to that component. "X fails" and "my 5MB instance of X's key module fails"
 are different findings; only the second was earned here.
+
+**Refinement found on re-reading the probe's own output: name the failure's direction, not just
+its size.** The published line was "the done head is worse than a constant base rate from step 5".
+True — but the constant's BCE is flat at 0.124 for 44 of 45 steps, which is the signature of
+targets that are *all zero*: the probe's windows contain no reset except possibly at the last
+step. So the model is not failing to notice episode ends; it is asserting ends that do not exist,
+at ~99.9% confidence (BCE ≈ 7). That distinction changes the mechanism from "the dream misses
+terminations" to "soft continues multiply the rest of the dream's return by ~zero", which is a
+sharper and more damning story — and it was sitting in the committed JSON the whole time.
+
+**Takeaway:** before publishing "the model is worse than a trivial baseline", look at what the
+baseline is being right about. A flat baseline curve usually means the labels are constant, and a
+constant-label regime tells you which of two opposite failures you are looking at.

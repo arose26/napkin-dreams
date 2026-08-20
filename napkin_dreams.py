@@ -311,7 +311,13 @@ def train(arm, seed, total_real=TOTAL_REAL, quiet=False):
 
 def divergence(wm, buf, horizon=45, k=256):
     """Open-loop dream vs recorded truth: per-step reconstruction BCE of the
-    dream against the actual frames, from held-out windows."""
+    dream against the actual frames, from held-out windows.
+
+    Boundary worth knowing when reading the curve: `sample_windows` rejects a
+    reset anywhere except the window's last transition (deliberately -- a
+    window that can never end is a window in which the done head has no
+    positive example to learn from), so index -1 here may be scored against a
+    post-reset frame. `plot` shows the reset-free prefix."""
     o, a, _, _ = buf.sample_windows(k, horizon)
     o = torch.as_tensor(o, device=DEV)
     a = torch.as_tensor(a, device=DEV)
@@ -447,12 +453,22 @@ def make_plots():
         divs = np.array([seeds[s]["divergence"] for s in sorted(seeds)
                          if seeds[s]["divergence"] is not None])
         if divs.size:
-            axes[1].plot(range(1, divs.shape[1] + 1), divs.mean(0),
+            # Windows are allowed to END on a done -- that is the only way the
+            # model's done head ever sees a positive example -- so the LAST
+            # step of a divergence curve can be scored against a post-reset
+            # frame. Plot the reset-free part; the raw 45 stay in the JSON.
+            axes[1].plot(range(1, divs.shape[1]), divs.mean(0)[:-1],
                          color=colors[arm], lw=2.0, label=arm)
         tail = curves[:, x >= 0.9 * x[-1], 1].mean(1)
         results[arm] = dict(iqm=float(iqm(tail)),
                             ci=[float(v) for v in bootstrap_ci(tail)],
-                            seeds=[float(v) for v in tail])
+                            seeds=[float(v) for v in tail],
+                            # the divergence curve is quoted in the README too,
+                            # so it ships in the same committed file as the
+                            # returns rather than only in the plot's pixels
+                            divergence_mean=[float(v) for v in divs.mean(0)]
+                            if divs.size else None,
+                            divergence_seeds=int(len(divs)))
 
     base = Path(__file__).parent / "assets" / "baseline_dqn.json"
     if base.exists():
