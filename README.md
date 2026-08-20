@@ -57,9 +57,13 @@ That detachment buys the repo's signature `selfcheck`: the imagination loop is a
    not just its policy. The model recipe (architecture, schedule, hyperparameters) is identical
    across arms; what differs is the data each arm's own policy collects. So "dream longer"
    degraded the dream itself through the data it gathered, not through the training recipe.
-4. One `h15` seed collapsed outright (final return 0.25 — **included** in the return IQM above;
-   episodes all shorter than 45 steps). Its divergence probe has no valid 45-step window and is
-   reported as **null**, not fabricated (see INSIGHTS #3), so the h15 divergence curve averages
+4. One `h15` seed collapsed (seed 4: tail-mean return 0.25, the statistic the table uses; its
+   last curve point is 0.35) — **included** in the return IQM above. Its divergence probe found
+   **no usable 45-step window**: bounded rejection sampling drew ~51k candidate starts and
+   accepted 0 of the 256 needed, so the probe is reported as **null** rather than fabricated
+   (see INSIGHTS #3). Caveat stated because it matters: that null was produced *before* the
+   exact-enumeration fallback landed, and rejection can miss windows that are merely rare, so
+   "none exist" is not established — only "none found". The h15 divergence curve averages
    4 of 5 seeds — and may flatter h15 there, since the excluded seed is its worst. Two `h45`
    seeds had only 8–16 valid windows; their probes use exact enumeration of those windows.
 

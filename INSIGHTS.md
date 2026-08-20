@@ -31,7 +31,7 @@ ground truth" is a real design criterion, not an afterthought.
 
 The divergence probe rejection-samples 45-step windows that don't cross an episode reset. The
 loop was "obviously correct": keep drawing until you have 256 clean windows. Then one h15 seed
-collapsed — final return 0.25, every episode shorter than 45 steps — and the probe didn't fail,
+collapsed — tail-mean return 0.25, episodes too short to span the window — and the probe didn't fail,
 didn't error, didn't time out. It spun at 100% CPU forever, in numpy, invisible to any check
 that only asks "is the process alive and busy?". It cost hours to notice precisely because the
 failure mode looks identical to healthy training from the outside.
